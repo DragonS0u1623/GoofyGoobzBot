@@ -33,4 +33,6 @@ loadCommands(client).then(() => {
     })
 })
 
+require('./utils/server')()
+
 client.login(process.env.TOKEN)
