@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, Partials, Collection, ActivityType } = require('discord.js')
 const { loadCommands, loadEvents, loadSlashCommands } = require('./utils/utils')
+const mongo = require('../utils/mongo')
 const { config } = require('dotenv')
 config()
 
@@ -31,6 +32,10 @@ loadCommands(client).then(() => {
     loadEvents(client).then(() => {
         loadSlashCommands()
     })
+})
+
+mongo().then(() => {
+    console.log('Connected to MongoDB')
 })
 
 require('./utils/server')()
