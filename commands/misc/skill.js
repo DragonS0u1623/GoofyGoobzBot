@@ -13,7 +13,7 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply()
         const user = interaction.options.getUser('target') || interaction.user
-        const doc = skillSchema.findOne({ memberId: user.id })
+        const doc = await skillSchema.findOne({ memberId: user.id })
         let skill
         switch (interaction.options.getSubcommand()) {
             case 'view':
