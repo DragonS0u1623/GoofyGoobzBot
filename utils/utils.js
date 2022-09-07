@@ -3,7 +3,7 @@ const glob = promisify(require('glob'))
 const path = require('path')
 const { REST } = require('@discordjs/rest')
 const { ActivityType, Routes } = require('discord.js')
-const { CLIENT_ID, BTHD_ID } = require('./staticVars')
+const { CLIENT_ID, OWNERS } = require('./staticVars')
 
 const homePath = path.dirname(require.main?.filename || '')
 const commandsPath = path.join(homePath, 'commands')
@@ -11,13 +11,13 @@ const eventsPath = path.join(homePath, 'events')
 
 const status = [
     { name: 'the Goofy Goobz', type: ActivityType.Watching },
-    { name: '', type: ActivityType.Playing }
+    { name: 'scrims with BobTheHotdog', type: ActivityType.Playing }
 ]
 const commands = []
 
 module.exports = {
-    checkBob(interaction) {
-        if (interaction.user.id !== BTHD_ID) return false
+    checkOwner(interaction) {
+        if (!OWNERS.includes(interaction.user.id)) return false
         return true
     },
     async loadCommands(client) {
@@ -44,7 +44,6 @@ module.exports = {
 		})
     },
     async loadSlashCommands() {
-		console.log(commands)
 		const rest = new REST({ version: '10' }).setToken(process.env.TOKEN)
         try {
             await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands })

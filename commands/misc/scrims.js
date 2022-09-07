@@ -1,12 +1,14 @@
 const { SlashCommandBuilder, underscore, bold } = require('discord.js')
-const { SCRIM_CHANNEL } = require('../../utils/staticVars')
 const scrimsSchema = require('../../models/scrimQueue')
+const { checkOwner } = require('../../utils/utils')
 
 module.exports = {
     data: new SlashCommandBuilder().setName('scrims').setDescription('Base command for scrims queue')
         .addSubcommand(subcommand => subcommand.setName('join').setDescription('Joins the queue for scrims'))
         .addSubcommand(subcommand => subcommand.setName('leave').setDescription('Leaves the queue for scrims'))
-        .addSubcommand(subcommand => subcommand.setName('create').setDescription('Creates a new queue'))
+        .addSubcommand(subcommand => subcommand.setName('create').setDescription('Creates a new queue')
+            .addChannelOption(option => option.setName('channel').setDescription('The channel you want to create the queue in').setRequired(true))
+        )
         .addSubcommand(subcommand => subcommand.setName('destroy').setDescription('Clears the queue'))
         .addSubcommand(subcommand => 
             subcommand.setName('add').setDescription('Adds the member to the queue')
@@ -18,118 +20,134 @@ module.exports = {
         )
         .setDMPermission(false),
     async execute(interaction) {
-        await interaction.deferReply()
+        await interaction.deferReply({ ephemeral: true })
         const doc = await scrimsSchema.findOne()
+        let channel
         switch (interaction.options.getSubcommand()) {
             case 'join':
                 if (!doc) {
-                    interaction.editReply({ content: 'There is no current queue', ephemeral: true })
+                    interaction.editReply('There is no current queue')
                     break
                 }
 
-                interaction.guild.channels.fetch(SCRIM_CHANNEL).then(channel => {
-                    channel.messages.fetch(doc.message).then(message => {
-                        if (message.mentions.users.has(interaction.user)) {
-                            interaction.editReply({ content: `You're already in the queue`, ephemeral: true })
-                            return
-                        }
+                channel = interaction.guild.channels.resolve(doc.channel)
 
-                        const newMessage = `${message.content}\n${interaction.user}`
-                        message.edit(newMessage)
-                    })
+                channel.messages.fetch(doc.message).then(message => {
+                    const { users } = message.mentions
+                    if (users.has(interaction.user.id)) {
+                        interaction.editReply(`You're already in the queue`)
+                        return
+                    }
+
+                    const newMessage = `${message.content}\n${interaction.user}`
+                    message.edit(newMessage)
                 })
-                interaction.editReply({ content: 'Added you to the queue', ephemeral: true })
+                interaction.editReply('Added you to the queue')
                 break
             case 'leave':
                 if (!doc) {
-                    interaction.editReply({ content: 'There is no current queue', ephemeral: true })
+                    interaction.editReply('There is no current queue')
                     break
                 }
 
-                interaction.guild.channels.fetch(SCRIM_CHANNEL).then(channel => {
-                    channel.messages.fetch(doc.message).then(message => {
-                        if (!message.mentions.users.has(interaction.user)) {
-                            interaction.editReply({ content: `You're not in the queue`, ephemeral: true })
-                            return
-                        }
+                channel = interaction.guild.channels.resolve(doc.channel)
 
-                        const newMessage = message.content.replace(`${interaction.user}`, '')
-                        message.edit(newMessage)
-                    })
+                channel.messages.fetch(doc.message).then(message => {
+                    const { users } = message.mentions
+                    if (!users.has(interaction.user.id)) {
+                        interaction.editReply(`You're not in the queue`)
+                        return
+                    }
+
+                    const newMessage = message.content.replace(`<@${interaction.user.id}>`, '')
+                    message.edit(newMessage)
                 })
-                interaction.editReply({ content: `Removed you from the queue`, ephemeral: true })
+                interaction.editReply(`Removed you from the queue`)
                 break
             case 'create':
+                if (!checkOwner(interaction)) {
+                    interaction.editReply('Only Bob is allowed to use this command')
+                    return
+                }
                 if (doc) {
                     interaction.editReply('There is already a queue active. Please use the destroy command to clear all queues')
                     break
                 }
 
-                interaction.guild.channels.fetch(SCRIM_CHANNEL).then(channel => {
-                    channel.send(bold(underscore('Current Queue'))).then(message => {
-                        message.pin()
-                        new scrimsSchema({ message: message.id }).save()
-                    })
+                channel = interaction.options.getChannel('channel', true) 
+
+                const ch = interaction.guild.channels.resolve(channel.id)
+                ch.send(bold(underscore('Current Queue'))).then(async (message) => {
+                    try {
+                        await message.pin()
+                    } catch (e) {}
+                    new scrimsSchema({ channel: channel.id, message: message.id }).save()
                 })
-                interaction.editReply({ content: `Created a queue in ${channel}`, ephemeral: true })
+                interaction.editReply(`Created a queue in ${channel}`)
                 break
             case 'destroy':
+                if (!checkOwner(interaction)) {
+                    interaction.editReply('Only Bob is allowed to use this command')
+                    return
+                }
                 if (!doc) {
                     interaction.editReply(`There aren't any queues active`)
                     break
                 }
 
-                interaction.guild.channels.fetch(SCRIM_CHANNEL).then(async (channel) => {
-                    const { message } = await channel.messages.fetch(doc.message)
-                    message.delete()
-                    scrimsSchema.deleteMany()
+                channel = interaction.guild.channels.resolve(doc.channel)
+
+                channel.messages.fetch(doc.message).then(async (message) => {
+                    await message.delete()
+                    await scrimsSchema.deleteMany()
                 })
-                interaction.editReply({ content: `Deleted the queue`, ephemeral: true })
+                interaction.editReply(`Deleted the queue`)
                 break
             case 'add':
                 if (!doc) {
-                    interaction.editReply({ content: 'There is no current queue', ephemeral: true })
+                    interaction.editReply('There is no current queue')
                     break
                 }
 
                 const toAdd = interaction.options.getUser('target')
 
-                interaction.guild.channels.fetch(SCRIM_CHANNEL).then(channel => {
-                    channel.messages.fetch(doc.message).then(message => {
-                        if (message.mentions.users.has(toAdd)) {
-                            interaction.editReply({ content: `That person is already in the queue`, ephemeral: true })
-                            return
-                        }
+                channel = interaction.guild.channels.resolve(doc.channel)
 
-                        const newMessage = `${message.content}\n${toAdd}`
-                        message.edit(newMessage)
-                    })
+                channel.messages.fetch(doc.message).then(message => {
+                    const { users } = message.mentions
+                    if (users.has(toAdd.id)) {
+                        interaction.editReply(`That person is already in the queue`)
+                        return
+                    }
+
+                    const newMessage = `${message.content}\n${toAdd}`
+                    message.edit(newMessage)
                 })
-                interaction.editReply({ content: `Added ${toAdd} to the queue`, ephemeral: true })
+                interaction.editReply(`Added ${toAdd} to the queue`)
                 break
             case 'remove':
                 if (!doc) {
-                    interaction.editReply({ content: 'There is no current queue', ephemeral: true })
+                    interaction.editReply('There is no current queue')
                     break
                 }
 
                 let toRemove = interaction.options.getUser('target')
 
-                interaction.guild.channels.fetch(SCRIM_CHANNEL).then(channel => {
-                    channel.messages.fetch(doc.message).then(message => {
-                        if (toRemove !== null && !message.mentions.users.has(toRemove)) {
-                            interaction.editReply({ content: `That person isn't in the queue`, ephemeral: true })
-                            return
-                        }
+                channel = interaction.guild.channels.resolve(doc.channel)
+                channel.messages.fetch(doc.message).then(message => {
+                    const { users } = message.mentions
+                    if (toRemove !== null && !users.has(toRemove.id)) {
+                        interaction.editReply(`That person isn't in the queue`)
+                        return
+                    }
 
-                        if (!toRemove)
-                            toRemove = message.mentions.users.first()
+                    if (!toRemove)
+                        toRemove = message.mentions.users.first()
 
-                        const newMessage = message.content.replace(`${toRemove}`, '')
-                        message.edit(newMessage)
-                    })
+                    const newMessage = message.content.replace(`<@${toRemove.id}>`, '')
+                    message.edit(newMessage)
                 })
-                interaction.editReply({ content: `Removed ${toRemove} from queue`, ephemeral: true })
+                interaction.editReply(`Removed ${toRemove} from queue`)
                 break
             default:
                 break

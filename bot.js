@@ -1,13 +1,14 @@
 const { Client, GatewayIntentBits, Partials, Collection, ActivityType } = require('discord.js')
 const { loadCommands, loadEvents, loadSlashCommands } = require('./utils/utils')
-const mongo = require('../utils/mongo')
+const mongo = require('./utils/mongo')
 const { config } = require('dotenv')
 config()
 
 const intents = [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.DirectMessages
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent
 ], partials = [
     Partials.User,
     Partials.Message,
@@ -28,16 +29,8 @@ const client = new Client({
 client.commands = new Collection()
 client.events = new Collection()
 
-loadCommands(client).then(() => {
-    loadEvents(client).then(() => {
-        loadSlashCommands()
-    })
-})
+loadCommands(client).then(() => loadEvents(client).then(() => loadSlashCommands()))
 
-mongo().then(() => {
-    console.log('Connected to MongoDB')
-})
-
-require('./utils/server')()
+mongo().then(() => console.log('Connected to MongoDB'))
 
 client.login(process.env.TOKEN)
